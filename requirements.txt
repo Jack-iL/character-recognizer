@@ -1,0 +1,22 @@
+# CPU 版依赖 (无显卡电脑也能跑)。安装:
+#   pip install -r requirements.txt
+# 国内网络慢可用清华镜像:
+#   pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+#   (或使用仓库里的 mini_pip.py)
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.1
+torchvision==0.19.1
+transformers==4.44.2
+ultralytics==8.4.138
+flask>=3.0
+numpy
+opencv-python
+pillow
+pyyaml
+requests
+tqdm
+pandas
+matplotlib
+scipy
+seaborn

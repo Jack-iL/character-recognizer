@@ -1,0 +1,83 @@
+# ============ 不要提交到 Git 的内容 ============
+
+# 运行期产物
+web_config.json
+config.txt
+debug_log.txt
+hf_cache/
+input_images/
+output_results/
+output_fixed/
+datasets/
+*.log
+
+# 模型文件: 用户自己训练的 (.pt/.pth/.onnx...) 与下载的 CLIP 模型
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.engine
+clip_model/
+clip_model_fp16/
+
+# 图片: 本仓库不需要任何图片, 一律忽略
+# (参考图/截图可能涉及第三方版权, 且属于个人素材)
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.webp
+*.gif
+*.tif
+*.tiff
+*.svg
+*.ico
+
+# 输出数据表
+*.csv
+*.xlsx
+
+# 密钥/凭据类文件 (防止误传; 本仓库不需要任何凭据)
+.env
+.env.*
+*.key
+*.pem
+*.pfx
+*.p12
+*.crt
+id_rsa*
+id_ed25519*
+credentials*
+secrets*
+.npmrc
+.pypirc
+.netrc
+
+# 编辑器/IDE 配置 (可能包含本机路径)
+.vscode/
+.idea/
+*.swp
+*~
+
+# 参考集 / 排除集 的目录结构要保留, 但里面的内容不要
+reference/*/*
+!reference/*/.gitkeep
+exclude/*
+!exclude/.gitkeep
+!exclude/README.md
+
+# Python
+__pycache__/
+*.pyc
+pylibs/
+.venv/
+venv/
+
+# 打包产物
+build/
+dist/
+*.spec.bak
+
+# 系统
+Thumbs.db
+.DS_Store

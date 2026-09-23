@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>角色识别器 / Character Recognizer</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --line: #e3e6ea;
+    --text: #23272f; --muted: #6b7280; --accent: #2563eb; --accent2: #059669;
+    --danger: #dc2626; --warn: #d97706;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); padding: 24px 16px 60px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+  .card h2 { font-size: 15px; margin-bottom: 12px; color: var(--accent); }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .field input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row .field { flex: 1; min-width: 240px; }
+  button { border: none; border-radius: 6px; padding: 9px 18px; font-size: 14px; cursor: pointer; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-green { background: var(--accent2); color: #fff; }
+  .btn-green:hover { background: #047857; }
+  .btn-gray { background: #e5e7eb; color: #374151; }
+  .btn-danger { background: #fee2e2; color: var(--danger); }
+  .btn-lang { background: #fff; border: 1px solid var(--line); color: #374151; padding: 6px 12px; font-size: 13px; }
+  .btn-row { display: flex; gap: 10px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+  #status { font-size: 13px; color: var(--muted); margin-left: 6px; }
+  #status.error { color: var(--danger); }
+  #status.ok { color: var(--accent2); }
+  .drop { border: 2px dashed #c3c9d1; border-radius: 8px; padding: 18px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .drop.hover { border-color: var(--accent); color: var(--accent); }
+  .img-card { margin-bottom: 22px; }
+  .img-card h3 { font-size: 14px; margin-bottom: 8px; }
+  .img-card img { width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+  th { background: #f0f2f5; }
+  select { padding: 4px 6px; border-radius: 5px; border: 1px solid var(--line); font-size: 13px; }
+  .conf-low { color: var(--warn); font-weight: 600; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .credit { text-align: center; font-size: 12px; color: #9ca3af; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .field input.bad { border-color: #dc2626; background: #fff5f5; }
+  .msg-panel { border-radius: 8px; padding: 14px 16px; margin-top: 14px; font-size: 13px; line-height: 1.85; }
+  .msg-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  .msg-warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+  .msg-panel b.title { display: block; font-size: 14px; margin-bottom: 4px; }
+  .msg-panel .hint { margin-top: 10px; padding-top: 8px; border-top: 1px dashed currentColor; }
+  .guide h3 { font-size: 14px; margin: 14px 0 6px; color: #374151; }
+  .guide p, .guide li, .guide td { font-size: 13px; line-height: 1.8; color: #4b5563; }
+  .guide ol, .guide ul { padding-left: 20px; }
+  .guide th { width: 22%; }
+  /* 语言选择遮罩 */
+  #langOverlay { position: fixed; inset: 0; background: #111827ee; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; z-index: 999; }
+  #langOverlay h2 { color: #fff; font-size: 26px; }
+  #langOverlay .hint { color: #9ca3af; font-size: 14px; }
+  #langOverlay .btns { display: flex; gap: 20px; }
+  #langOverlay button { font-size: 20px; padding: 16px 44px; border-radius: 12px; }
+</style>
+</head>
+<body>
+
+<div id="langOverlay" style="display:none">
+  <h2 data-i18n="choose_title">请选择语言</h2>
+  <div class="hint" data-i18n="choose_hint">之后可在页面右上角随时切换</div>
+  <div class="btns">
+    <button class="btn-primary" onclick="chooseLang('zh')">中文</button>
+    <button class="btn-green" onclick="chooseLang('en')">English</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="credit" data-i18n="credit">Made by NEU~Jack Li</div>
+  <div class="topbar">
+    <div>
+      <h1 data-i18n="app_title">🐉 角色识别器</h1>
+      <div class="sub" data-i18n="app_sub">YOLO 检测 + CLIP 分类 · 本地运行 · 数据不出本机</div>
+    </div>
+    <button class="btn-lang" id="btnLang">EN</button>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="step1_title">第一步：设置路径</h2>
+    <div class="row">
+      <div class="field">
+        <label data-i18n="yolo_label">YOLO 模型文件 (.pt)</label>
+        <input id="yolo_model" data-i18n-ph="yolo_ph" placeholder="必填：C:\...\best.pt">
+      </div>
+      <div class="field">
+        <label data-i18n="images_label">图片文件夹（留空 = 使用程序自带的 input_images）</label>
+        <input id="images_folder" data-i18n-ph="images_ph" placeholder="留空用程序自带文件夹">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label data-i18n="refset_label">参考集文件夹（每个子文件夹 = 一个类）</label>
+        <input id="refset" data-i18n-ph="refset_ph" placeholder="必填：C:\...\reference">
+      </div>
+      <div class="field">
+        <label data-i18n="exclset_label">排除参考集文件夹（可选：放"不要的东西"，匹配上的框会被排除）</label>
+        <input id="exclset" data-i18n-ph="exclset_ph" placeholder="可选，留空 = 不排除任何东西">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label data-i18n="output_label">输出文件夹（留空 = 使用程序自带的 output_results）</label>
+        <input id="output_folder" data-i18n-ph="output_ph" placeholder="留空用程序自带文件夹">
+      </div>
+    </div>
+    <div class="drop" id="drop" data-i18n="drop_text">📁 把图片拖到这里，自动加入图片文件夹（也可以不拖，图片文件夹里已有的图会直接用）</div>
+    <div class="btn-row">
+      <button class="btn-primary" id="btnRun" data-i18n="btn_run">▶ 开始识别</button>
+      <button class="btn-gray" id="btnLast" data-i18n="btn_last">🕘 填入上次输入</button>
+      <button class="btn-gray" id="btnSaveDefaults" data-i18n="btn_save_defaults">💾 保存为默认</button>
+      <span id="status"><span data-i18n="status_ready">就绪 · 设备:</span> <span id="device">?</span></span>
+    </div>
+    <div id="msgPanel" class="msg-panel" style="display:none"></div>
+  </div>
+
+  <div class="card" id="resultsCard" style="display:none">
+    <h2 data-i18n="step2_title">第二步：核对结果</h2>
+    <div class="legend" id="legend"></div>
+    <div id="results"></div>
+    <div class="btn-row">
+      <button class="btn-green" id="btnSave" data-i18n="btn_save">💾 保存修正结果（生成最终图和 Excel 表）</button>
+      <span id="saveStatus"></span>
+    </div>
+  </div>
+
+  <div class="card guide">
+    <h2 style="color:#7c3aed" data-i18n="guide_title">📖 新手使用说明（第一次用，先看这里）</h2>
+    <h3 data-i18n="guide_what_title">这个程序是干什么的？</h3>
+    <p data-i18n="guide_what_body">给你指定的一批图片做目标识别：先用 YOLO 模型在每张图里找出所有目标（画框），再用 CLIP 判断每个框里是哪个类别。全部在你电脑本地运行，图片不会上传到任何地方。</p>
+    <h3 data-i18n="guide_prep_title">使用前，你需要准备好几样东西</h3>
+    <table style="margin-top:6px">
+      <tr><th data-i18n="th_thing">东西</th><th data-i18n="th_desc">说明</th></tr>
+      <tr><td><b>① YOLO <span data-i18n="prep1_name">模型</span></b></td><td data-i18n="prep1_body">一个训练好的 .pt 文件。它是"找框"的角色。</td></tr>
+      <tr><td><b>② <span data-i18n="prep2_name">要识别的图片</span></b></td><td data-i18n="prep2_body">一个文件夹，里面放图片（png / jpg / bmp / webp）。也可以直接拖进本页的虚线框。</td></tr>
+      <tr><td><b>③ <span data-i18n="prep3_name">参考集文件夹</span></b></td><td data-i18n="prep3_body">教 CLIP 认类别的"教材"：每个子文件夹 = 一个类，文件夹名就是类名（建议用英文），每个子文件夹里放该类例图 10~20 张。</td></tr>
+      <tr><td><b>④ <span data-i18n="prep4_name">排除参考集</span>（<span data-i18n="optional">可选</span>）</b></td><td data-i18n="prep4_body">放"不要的东西"（杂项、容易被误认的角色等）。匹配上这些的框会被自动排除，不进最终结果。</td></tr>
+    </table>
+    <h3 data-i18n="guide_steps_title">操作步骤（就四步）</h3>
+    <ol>
+      <li><b data-i18n="step1_head">填路径</b><span data-i18n="step1_body">：把上面四个路径填进输入框（图片文件夹和输出文件夹可以留空，会用程序自带的）。</span></li>
+      <li><b data-i18n="step2_head">开始识别</b><span data-i18n="step2_body">：点「▶ 开始识别」。第一次运行要加载模型，可能要等 1 分钟左右。</span></li>
+      <li><b data-i18n="step3_head">核对结果</b><span data-i18n="step3_body">：结果按图片分组显示，每张图上画了带编号的框，下方表格对应每个框：类别判错了用下拉菜单直接改；多余的框点「删除」；置信度低的（黄色数字）重点看。</span></li>
+      <li><b data-i18n="step4_head">保存</b><span data-i18n="step4_body">：点「💾 保存修正结果」，最终标注图 + result_table.csv（Excel 能开的明细表）会写进输出文件夹。</span></li>
+    </ol>
+    <h3 data-i18n="guide_btn_title">两个省事按钮</h3>
+    <ul>
+      <li data-i18n="guide_btn_body1"><b>🕘 填入上次输入</b>：把你上一次成功识别时填的路径一键填回来</li>
+      <li data-i18n="guide_btn_body2"><b>💾 保存为默认</b>：把现在填的路径存为默认，下次打开页面自动填好</li>
+    </ul>
+    <h3 data-i18n="guide_faq_title">常见问题</h3>
+    <ul>
+      <li data-i18n="faq1"><b>参考集怎么建？</b> 建一个文件夹，里面按类别建子文件夹（类名用英文，会直接画在框上），每个子文件夹放该类例图。图带背景没关系，角色占画面主体、清楚即可。</li>
+      <li data-i18n="faq2"><b>类名为什么建议英文？</b> 类名要画在图片的框上，中文画不出来（会显示成乱码）。</li>
+      <li data-i18n="faq3"><b>识别结果里出现"排除"？</b> 那是被排除集拦下来的框，保存时自动剔除；如果它其实是对的，在下拉菜单把它改回真类就行。</li>
+      <li data-i18n="faq4"><b>换了识别目标怎么办？</b> 不用动程序：换一个参考集文件夹（按新类别建子文件夹放例图），运行时把路径给它就行。换 YOLO 模型同理，换个 .pt 路径即可。</li>
+      <li data-i18n="faq5"><b>窗口/页面怎么关？</b> 关掉黑色命令行窗口 = 关闭程序。</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let state = null;
+let lastUsed = {};
+let lang = localStorage.getItem("lang") || "";
+
+// ==================== 翻译字典 ====================
+const T = {
+  zh: {
+    choose_title: "请选择语言", choose_hint: "之后可在页面右上角随时切换",
+    credit: "东北大学-李仲洲制作",
+    app_title: "🐉 角色识别器", app_sub: "YOLO 检测 + CLIP 分类 · 本地运行 · 数据不出本机",
+    step1_title: "第一步：设置路径",
+    yolo_label: "YOLO 模型文件 (.pt)", yolo_ph: "必填：C:\\...\\best.pt",
+    images_label: "图片文件夹（留空 = 使用程序自带的 input_images）", images_ph: "留空用程序自带文件夹",
+    refset_label: "参考集文件夹（每个子文件夹 = 一个类）", refset_ph: "必填：C:\\...\\reference",
+    exclset_label: "排除参考集文件夹（可选：放\"不要的东西\"，匹配上的框会被排除）", exclset_ph: "可选，留空 = 不排除任何东西",
+    output_label: "输出文件夹（留空 = 使用程序自带的 output_results）", output_ph: "留空用程序自带文件夹",
+    drop_text: "📁 把图片拖到这里，自动加入图片文件夹（也可以不拖，图片文件夹里已有的图会直接用）",
+    btn_run: "▶ 开始识别", btn_last: "🕘 填入上次输入", btn_save_defaults: "💾 保存为默认",
+    status_ready: "就绪 · 设备:", step2_title: "第二步：核对结果",
+    btn_save: "💾 保存修正结果（生成最终图和 Excel 表）",
+    guide_title: "📖 新手使用说明（第一次用，先看这里）",
+    guide_what_title: "这个程序是干什么的？",
+    guide_what_body: "给你指定的一批图片做目标识别：先用 YOLO 模型在每张图里找出所有目标（画框），再用 CLIP 判断每个框里是哪个类别。全部在你电脑本地运行，图片不会上传到任何地方。",
+    guide_prep_title: "使用前，你需要准备好几样东西",
+    th_thing: "东西", th_desc: "说明",
+    prep1_name: "模型", prep1_body: "一个训练好的 .pt 文件。它是\"找框\"的角色。",
+    prep2_name: "要识别的图片", prep2_body: "一个文件夹，里面放图片（png / jpg / bmp / webp）。也可以直接拖进本页的虚线框。",
+    prep3_name: "参考集文件夹", prep3_body: "教 CLIP 认类别的\"教材\"：每个子文件夹 = 一个类，文件夹名就是类名（建议用英文），每个子文件夹里放该类例图 10~20 张。",
+    prep4_name: "排除参考集", optional: "可选", prep4_body: "放\"不要的东西\"（杂项、容易被误认的角色等）。匹配上这些的框会被自动排除，不进最终结果。",
+    guide_steps_title: "操作步骤（就四步）",
+    step1_head: "填路径", step1_body: "：把上面四个路径填进输入框（图片文件夹和输出文件夹可以留空，会用程序自带的）。",
+    step2_head: "开始识别", step2_body: "：点「▶ 开始识别」。第一次运行要加载模型，可能要等 1 分钟左右。",
+    step3_head: "核对结果", step3_body: "：结果按图片分组显示，每张图上画了带编号的框，下方表格对应每个框：类别判错了用下拉菜单直接改；多余的框点「删除」；置信度低的（黄色数字）重点看。",
+    step4_head: "保存", step4_body: "：点「💾 保存修正结果」，最终标注图 + result_table.csv（Excel 能开的明细表）会写进输出文件夹。",
+    guide_btn_title: "两个省事按钮",
+    guide_btn_body1: "<b>🕘 填入上次输入</b>：把你上一次成功识别时填的路径一键填回来",
+    guide_btn_body2: "<b>💾 保存为默认</b>：把现在填的路径存为默认，下次打开页面自动填好",
+    guide_faq_title: "常见问题",
+    faq1: "<b>参考集怎么建？</b> 建一个文件夹，里面按类别建子文件夹（类名用英文，会直接画在框上），每个子文件夹放该类例图。图带背景没关系，角色占画面主体、清楚即可。",
+    faq2: "<b>类名为什么建议英文？</b> 类名要画在图片的框上，中文画不出来（会显示成乱码）。",
+    faq3: "<b>识别结果里出现\"排除\"？</b> 那是被排除集拦下来的框，保存时自动剔除；如果它其实是对的，在下拉菜单把它改回真类就行。",
+    faq4: "<b>换了识别目标怎么办？</b> 不用动程序：换一个参考集文件夹（按新类别建子文件夹放例图），运行时把路径给它就行。换 YOLO 模型同理，换个 .pt 路径即可。",
+    faq5: "<b>窗口/页面怎么关？</b> 关掉黑色命令行窗口 = 关闭程序。",
+    th_num: "编号", th_pos: "位置", th_class: "类别", th_conf: "置信度", btn_del: "删除",
+    excl_option: "排除（不进结果）", legend_excl: "排除（保存时自动剔除）",
+    box_count: "个框", img_card_tail: "）",
+    no_last: "还没有'上次输入'的记录——先成功识别一次就有了",
+    filled_last: "已填入上次输入的内容",
+    saved_defaults: "已保存为默认——下次打开页面会自动填入",
+    uploading: "正在上传 {n} 张图...", uploaded: "已上传 {n} 张图到图片文件夹",
+    running: "识别中，请稍候（首次运行要加载模型，可能 1 分钟左右）...",
+    done: "完成：共 {n} 个框，请在下方核对", excl_active: "（排除集 {n} 张生效）",
+    invalid_files: "没有有效的图片文件",
+    error_prefix: "出错：", request_failed: "请求失败：",
+    saving: "保存中...",
+    saved_ok: "✅ 已保存到 {dir}（标注图 + result_table.csv）",
+    saved_excl: "，已自动剔除 {n} 个被排除的框",
+    err_EMPTY_YOLO: "请填写 YOLO 模型路径 (.pt 文件)",
+    err_EMPTY_REFSET: "请填写参考集文件夹路径",
+    err_YOLO_NOT_FOUND: "YOLO 模型文件不存在：{p}",
+    err_IMG_DIR_NOT_FOUND: "图片文件夹不存在：{p}",
+    err_NO_CLASSES: "参考集文件夹里没有找到类别（每个含图片的子文件夹 = 一个类）：{p}",
+    err_NO_REF_IMAGES: "参考集里没有找到任何图片",
+    err_NO_IMAGES: "图片文件夹里没有找到图片：{p}",
+    err_INTERNAL: "程序内部错误：{p}",
+    err_MISSING_DATA: "数据缺失",
+  },
+  en: {
+    choose_title: "Choose your language", choose_hint: "You can switch anytime from the top-right corner",
+    credit: "Made by NEU~Jack Li",
+    app_title: "🐉 Character Recognizer", app_sub: "YOLO detection + CLIP classification · runs locally · data stays on your machine",
+    step1_title: "Step 1: Settings",
+    yolo_label: "YOLO model file (.pt)", yolo_ph: "Required: C:\\...\\best.pt",
+    images_label: "Images folder (empty = use built-in input_images)", images_ph: "Empty = use built-in folder",
+    refset_label: "Reference set folder (each subfolder = one class)", refset_ph: "Required: C:\\...\\reference",
+    exclset_label: "Exclusion set folder (optional: things to exclude from results)", exclset_ph: "Optional, empty = exclude nothing",
+    output_label: "Output folder (empty = use built-in output_results)", output_ph: "Empty = use built-in folder",
+    drop_text: "📁 Drag images here to add them to the images folder (or skip — existing images in the folder are used directly)",
+    btn_run: "▶ Start", btn_last: "🕘 Fill last used", btn_save_defaults: "💾 Save as defaults",
+    status_ready: "Ready · Device:", step2_title: "Step 2: Review results",
+    btn_save: "💾 Save fixes (final images + Excel table)",
+    guide_title: "📖 Beginner's guide (read this first)",
+    guide_what_title: "What does this program do?",
+    guide_what_body: "It performs object recognition on a batch of images: a YOLO model finds every target (draws boxes) in each image, then CLIP decides which class each box belongs to. Everything runs locally on your computer — images never leave your machine.",
+    guide_prep_title: "Before you start, prepare these things",
+    th_thing: "Thing", th_desc: "What it is",
+    prep1_name: "model", prep1_body: "A trained .pt file. It does the \"finding boxes\" part.",
+    prep2_name: "images", prep2_body: "A folder of images (png / jpg / bmp / webp). You can also drag them into the dashed box on this page.",
+    prep3_name: "reference set", prep3_body: "The \"textbook\" that teaches CLIP your classes: each subfolder = one class, the subfolder name is the class name (use English), put 10~20 example images of that class inside.",
+    prep4_name: "exclusion set", optional: "optional", prep4_body: "Put the things you do NOT want (junk, easily-confused characters, etc.). Boxes matching these are excluded from the final result.",
+    guide_steps_title: "How to use it (four steps)",
+    step1_head: "Fill in paths", step1_body: ": fill the four paths above (images folder and output folder can be left empty to use built-in folders).",
+    step2_head: "Start", step2_body: ": click \"▶ Start\". The first run loads models and may take about a minute.",
+    step3_head: "Review", step3_body: ": results are grouped by image; each image shows numbered boxes and a table below: fix a wrong class with the dropdown; remove extra boxes with \"Delete\"; pay attention to low-confidence ones (yellow numbers).",
+    step4_head: "Save", step4_body: ": click \"💾 Save fixes\" — final annotated images + result_table.csv (an Excel-readable table) are written to the output folder.",
+    guide_btn_title: "Two handy buttons",
+    guide_btn_body1: "<b>🕘 Fill last used</b>: fills in the paths from your last successful run with one click",
+    guide_btn_body2: "<b>💾 Save as defaults</b>: saves the current paths as defaults, auto-filled next time you open the page",
+    guide_faq_title: "FAQ",
+    faq1: "<b>How to build a reference set?</b> Create a folder, inside it create one subfolder per class (use English names — they are drawn on the boxes), and put example images of that class inside. Backgrounds are fine; the character should fill most of the frame and be clear.",
+    faq2: "<b>Why English class names?</b> Class names are drawn on the boxes, and Chinese characters cannot be rendered there (they show as garbage).",
+    faq3: "<b>What is \"Excluded\" in the results?</b> It is a box caught by the exclusion set; it is dropped automatically when saving. If it is actually correct, change it back to a real class in the dropdown.",
+    faq4: "<b>How to switch to different targets?</b> No code changes: point to a different reference set folder (built for the new classes), and/or a different .pt file.",
+    faq5: "<b>How to close the program?</b> Close the black command-line window.",
+    th_num: "#", th_pos: "Position", th_class: "Class", th_conf: "Confidence", btn_del: "Delete",
+    excl_option: "Exclude (dropped on save)", legend_excl: "Excluded (removed on save)",
+    box_count: " boxes", img_card_tail: ")",
+    no_last: "No \"last used\" record yet — complete one run first",
+    filled_last: "Filled with your last-used values",
+    saved_defaults: "Saved as defaults — auto-filled next time",
+    uploading: "Uploading {n} image(s)...", uploaded: "Uploaded {n} image(s) to the images folder",
+    running: "Recognizing... (first run loads models, may take about a minute)",
+    done: "Done: {n} boxes, please review below", excl_active: " ({n} exclusion images active)",
+    invalid_files: "No valid image files",
+    error_prefix: "Error: ", request_failed: "Request failed: ",
+    saving: "Saving...",
+    saved_ok: "✅ Saved to {dir} (annotated images + result_table.csv)",
+    saved_excl: ", removed {n} excluded box(es)",
+    err_EMPTY_YOLO: "Please fill in the YOLO model path (.pt file)",
+    err_EMPTY_REFSET: "Please fill in the reference set folder path",
+    err_YOLO_NOT_FOUND: "YOLO model file not found: {p}",
+    err_IMG_DIR_NOT_FOUND: "Images folder not found: {p}",
+    err_NO_CLASSES: "No classes found in reference folder (each subfolder with images = one class): {p}",
+    err_NO_REF_IMAGES: "No reference images found",
+    err_NO_IMAGES: "No images found in folder: {p}",
+    err_INTERNAL: "Internal error: {p}",
+    err_MISSING_DATA: "Missing data",
+  }
+};
+
+function t(key, vars) {
+  let s = (T[lang] || T.zh)[key] ?? (T.zh[key] || key);
+  if (vars) for (const k in vars) s = s.replace("{" + k + "}", vars[k]);
+  return s;
+}
+
+// ==================== 语言 ====================
+function applyLang() {
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    el.innerHTML = t(el.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => {
+    el.placeholder = t(el.dataset.i18nPh);
+  });
+  $("btnLang").textContent = lang === "zh" ? "EN" : "中文";
+  $("device").textContent = lang === "zh" ? "GPU/CPU" : "GPU/CPU";
+  // 动态区
+  $("status").innerHTML = '<span data-i18n="status_ready">' + t("status_ready") + '</span> <span id="device">?</span>';
+  $("device").textContent = "";
+  // 已识别过就重渲染
+  if (state) renderResults();
+}
+
+function chooseLang(l) {
+  lang = l;
+  localStorage.setItem("lang", l);
+  $("langOverlay").style.display = "none";
+  clearMsg();
+  applyLang();
+  loadDefaults();
+}
+
+$("btnLang").onclick = () => chooseLang(lang === "zh" ? "en" : "zh");
+
+if (!lang) {
+  $("langOverlay").style.display = "flex";
+} else {
+  applyLang();
+}
+
+// ==================== 路径 ====================
+async function loadDefaults() {
+  const r = await fetch("/api/defaults");
+  const d = await r.json();
+  const defs = d.defaults || {};
+  $("yolo_model").value = defs.yolo_model || "";
+  $("images_folder").value = defs.images_folder || "";
+  $("refset").value = defs.refset || "";
+  $("output_folder").value = defs.output_folder || "";
+  $("exclset").value = defs.exclset || "";
+  lastUsed = d.last || {};
+  $("device").textContent = d.device === "cuda" ? "GPU" : "CPU";
+}
+
+function setStatus(msg, cls) {
+  $("status").innerHTML = msg;
+  $("status").className = cls || "";
+}
+
+$("btnLast").onclick = () => {
+  if (!lastUsed.yolo_model && !lastUsed.refset) {
+    setStatus(t("no_last"), "error");
+    return;
+  }
+  $("yolo_model").value = lastUsed.yolo_model || "";
+  $("images_folder").value = lastUsed.images_folder || "";
+  $("refset").value = lastUsed.refset || "";
+  $("output_folder").value = lastUsed.output_folder || "";
+  $("exclset").value = lastUsed.exclset || "";
+  setStatus(t("filled_last"), "ok");
+};
+
+$("btnSaveDefaults").onclick = async () => {
+  const defaults = {
+    yolo_model: $("yolo_model").value.trim(),
+    images_folder: $("images_folder").value.trim(),
+    refset: $("refset").value.trim(),
+    output_folder: $("output_folder").value.trim(),
+    exclset: $("exclset").value.trim(),
+  };
+  await fetch("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Requested-With": "CharacterRecognizer" },
+    body: JSON.stringify({ defaults }),
+  });
+  setStatus(t("saved_defaults"), "ok");
+};
+
+// 拖拽上传
+const drop = $("drop");
+["dragover", "dragenter"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("hover"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("hover"); }));
+drop.addEventListener("drop", async e => {
+  const files = [...e.dataTransfer.files].filter(f => /\.(png|jpe?g|bmp|webp)$/i.test(f.name));
+  if (!files.length) return setStatus(t("invalid_files"), "error");
+  setStatus(t("uploading", { n: files.length }));
+  const fd = new FormData();
+  fd.append("folder", $("images_folder").value || "input_images");
+  files.forEach(f => fd.append("files", f));
+  const r = await fetch("/api/upload", { method: "POST", headers: { "X-Requested-With": "CharacterRecognizer" }, body: fd });
+  const d = await r.json();
+  setStatus(t("uploaded", { n: d.saved.length }), "ok");
+});
+
+// ==================== 出错帮助（问题 / 原因 / 怎么改） ====================
+const ERRHELP = {
+  zh: {
+    EMPTY_YOLO: {
+      title: "缺少 YOLO 模型路径",
+      detail: "「YOLO 模型文件」这一栏是空的。",
+      hint: "打开你训练好的模型所在文件夹，找到 best.pt → 右键 →「复制文件地址」→ 粘贴进那一栏。\n例：D:\\yolo\\runs\\detect\\train\\weights\\best.pt"
+    },
+    EMPTY_REFSET: {
+      title: "缺少参考集路径",
+      detail: "「参考集文件夹」这一栏是空的。",
+      hint: "参考集是一个文件夹，里面每个子文件夹代表一个类别，子文件夹名就是类别名（用英文）。\n例：D:\\ref\\ 里面放 cat\\、dog\\ 两个子文件夹，各放 10~20 张例图。"
+    },
+    YOLO_NOT_FOUND: {
+      title: "找不到这个模型文件",
+      detail: "这个路径下没有文件：\n{path}",
+      hint: "常见原因：\n1. 路径拼错，或复制时漏掉了中间一段\n2. 文件被移动或删除了\n3. 盘符写错（D: 写成了 C: 等）\n建议：在文件夹里选中 .pt 文件 → 右键 →「复制文件地址」→ 整段粘贴回来。"
+    },
+    YOLO_IS_DIR: {
+      title: "这一栏填的是文件夹，不是模型文件",
+      detail: "路径：{path}",
+      hint: "需要填的是具体的 .pt 文件，不是它所在的文件夹。\n请进入该文件夹（如 weights\\），选中 best.pt 再复制它的地址。"
+    },
+    YOLO_BAD_EXT: {
+      title: "文件类型看起来不对",
+      detail: "路径：{path}",
+      hint: "YOLO 模型应该是 .pt 文件（或 .onnx）。\n请确认你选的是训练输出的 best.pt，而不是数据集、配置文件或压缩包。"
+    },
+    YOLO_LOAD_FAILED: {
+      title: "模型文件打不开（可能不是有效的 YOLO 模型）",
+      detail: "错误信息：{reason}",
+      hint: "1. 确认这个 .pt 是用 YOLO（ultralytics）训练出来的\n2. 如果它来自其它框架（或很老版本的 yolov5），请换成 ultralytics 导出的 .pt\n3. 文件可能已损坏，可重新下载/重新导出一次"
+    },
+    IMG_DIR_NOT_FOUND: {
+      title: "找不到图片文件夹",
+      detail: "这个路径不是文件夹或不存在：\n{path}",
+      hint: "把要识别的图片放在一个文件夹里，然后复制那个文件夹的地址粘贴进来。\n（也可以留空：程序会用自带文件夹；或直接把图片拖到页面的虚线框里）"
+    },
+    NO_IMAGES: {
+      title: "图片文件夹里没有找到图片",
+      detail: "文件夹：{path}\n里面的内容：{items}",
+      hint: "支持的格式：png / jpg / jpeg / bmp / webp（子文件夹里的图也会自动搜索）。\n请把图片放进去，或直接把图片拖到上面的虚线框里。"
+    },
+    REF_DIR_NOT_FOUND: {
+      title: "找不到参考集文件夹",
+      detail: "这个路径不是文件夹或不存在：\n{path}",
+      hint: "参考集文件夹的结构：\n参考集\\\n  ├─ 类名1\\   ← 放这一类的例图\n  └─ 类名2\\   ← 放另一类的例图\n请新建这样的文件夹并把地址粘贴进来。"
+    },
+    REF_NO_CLASSES: {
+      title: "参考集文件夹里没有类别",
+      detail: "文件夹里没有任何子文件夹：\n{path}",
+      hint: "请在参考集文件夹里新建至少 2 个子文件夹（名字用英文，例如 cat、dog），每个子文件夹里放 10~20 张该类例图。"
+    },
+    REF_ALL_EMPTY: {
+      title: "类别文件夹是空的",
+      detail: "这些子文件夹里没有任何图片：{classes}",
+      hint: "请往每个类别文件夹里放 10~20 张该类例图（png 或 jpg 均可）。"
+    },
+    REF_FILES_NOT_FOLDERS: {
+      title: "参考集里放的是散图，不是类别文件夹",
+      detail: "在参考集根目录发现这些文件：{items}",
+      hint: "参考集需要的是「子文件夹」而不是散放的图片。\n正确做法：新建子文件夹（用英文类名命名）→ 把该类例图放进去。"
+    },
+    NO_REF_IMAGES: {
+      title: "参考集里没有可用图片",
+      detail: "文件夹：{path}",
+      hint: "请检查每个类别文件夹里是否真的有图片（png / jpg / jpeg / bmp / webp）。"
+    },
+    OUT_DIR_FAILED: {
+      title: "输出文件夹用不了",
+      detail: "文件夹：{path}\n原因：{reason}",
+      hint: "可能是没有写入权限，或该位置受系统保护（如 C:\\Program Files）。\n换个位置试试，例如 D:\\识别结果；或者把这一栏留空，用程序自带的输出文件夹。"
+    },
+    INTERNAL: {
+      title: "程序内部出错了",
+      detail: "错误信息：{reason}",
+      hint: "请把这段信息发给作者。\n临时办法：换一张图片再试（可能是某张图片损坏或格式异常）。"
+    },
+    MISSING_DATA: {
+      title: "提交的数据不完整",
+      detail: "缺少必要字段。",
+      hint: "刷新页面（F5）后重新操作一次。"
+    }
+  },
+  en: {
+    EMPTY_YOLO: {
+      title: "YOLO model path is missing",
+      detail: "The \"YOLO model file\" field is empty.",
+      hint: "Open the folder with your trained model, find best.pt -> right-click -> \"Copy as path\" -> paste it here.\nExample: D:\\yolo\\runs\\detect\\train\\weights\\best.pt"
+    },
+    EMPTY_REFSET: {
+      title: "Reference set path is missing",
+      detail: "The \"Reference set folder\" field is empty.",
+      hint: "A reference set is a folder where each subfolder is one class, and the subfolder name is the class name (use English).\nExample: D:\\ref\\ containing cat\\ and dog\\, each with 10~20 example images."
+    },
+    YOLO_NOT_FOUND: {
+      title: "Model file not found",
+      detail: "No file exists at:\n{path}",
+      hint: "Common causes:\n1. Typo, or part of the path was lost when copying\n2. The file was moved or deleted\n3. Wrong drive letter\nTip: select the .pt file -> right-click -> \"Copy as path\" -> paste it back."
+    },
+    YOLO_IS_DIR: {
+      title: "You entered a folder, not a model file",
+      detail: "Path: {path}",
+      hint: "Point to the .pt file itself, not its folder.\nOpen the folder (e.g. weights\\) and copy the path of best.pt."
+    },
+    YOLO_BAD_EXT: {
+      title: "Unexpected file type",
+      detail: "Path: {path}",
+      hint: "A YOLO model should be a .pt file (or .onnx).\nMake sure you picked the trained best.pt, not a dataset, config or archive."
+    },
+    YOLO_LOAD_FAILED: {
+      title: "The model file could not be loaded",
+      detail: "Error: {reason}",
+      hint: "1. Make sure this .pt was trained with YOLO (ultralytics)\n2. If it comes from another framework (or an old yolov5), export it with ultralytics instead\n3. The file may be corrupted - re-export it"
+    },
+    IMG_DIR_NOT_FOUND: {
+      title: "Images folder not found",
+      detail: "Not a folder or does not exist:\n{path}",
+      hint: "Put the images you want to recognize into a folder and paste that folder's path.\n(Or leave it empty to use the built-in folder, or drag images onto the dashed box.)"
+    },
+    NO_IMAGES: {
+      title: "No images found in the images folder",
+      detail: "Folder: {path}\nIt contains: {items}",
+      hint: "Supported formats: png / jpg / jpeg / bmp / webp (subfolders are searched too).\nAdd images there, or drag them onto the dashed box above."
+    },
+    REF_DIR_NOT_FOUND: {
+      title: "Reference set folder not found",
+      detail: "Not a folder or does not exist:\n{path}",
+      hint: "Expected structure:\nreference\\\n  +-- class1\\   <- example images of class 1\n  +-- class2\\   <- example images of class 2\nCreate it and paste its path here."
+    },
+    REF_NO_CLASSES: {
+      title: "No classes found in the reference set",
+      detail: "The folder has no subfolders:\n{path}",
+      hint: "Create at least 2 subfolders inside it (English names, e.g. cat, dog) and put 10~20 example images in each."
+    },
+    REF_ALL_EMPTY: {
+      title: "Class folders are empty",
+      detail: "These subfolders contain no images: {classes}",
+      hint: "Put 10~20 example images of that class into each class folder (png or jpg)."
+    },
+    REF_FILES_NOT_FOLDERS: {
+      title: "The reference set contains loose files, not class folders",
+      detail: "Files found at the root: {items}",
+      hint: "The reference set needs subfolders, not loose images.\nCreate subfolders named after your classes (English) and put the example images inside."
+    },
+    NO_REF_IMAGES: {
+      title: "No usable reference images",
+      detail: "Folder: {path}",
+      hint: "Check that each class folder really contains images (png / jpg / jpeg / bmp / webp)."
+    },
+    OUT_DIR_FAILED: {
+      title: "Output folder is not usable",
+      detail: "Folder: {path}\nReason: {reason}",
+      hint: "Possibly no write permission, or the location is protected (e.g. C:\\Program Files).\nTry another place such as D:\\results, or leave the field empty to use the built-in output folder."
+    },
+    INTERNAL: {
+      title: "Internal error",
+      detail: "Details: {reason}",
+      hint: "Please send this message to the author.\nWorkaround: try another image (one image may be corrupted)."
+    },
+    MISSING_DATA: {
+      title: "Incomplete request",
+      detail: "Required fields are missing.",
+      hint: "Refresh the page (F5) and try again."
+    }
+  }
+};
+
+const WARNHELP = {
+  zh: {
+    WARN_EMPTY_CLASS: { title: "有些类别文件夹是空的", detail: "这些类别没有任何例图：{classes}", hint: "空类别不会参与识别（会被忽略），建议补上例图或删掉该子文件夹。" },
+    WARN_FEW_IMAGES: { title: "有些类别的例图偏少", detail: "{classes}", hint: "每类建议 10~20 张。例图太少时，这一类容易识别不准或被认成别的类。" }
+  },
+  en: {
+    WARN_EMPTY_CLASS: { title: "Some class folders are empty", detail: "No example images in: {classes}", hint: "Empty classes are ignored. Add example images or remove those subfolders." },
+    WARN_FEW_IMAGES: { title: "Some classes have few example images", detail: "{classes}", hint: "10~20 images per class is recommended; with fewer, that class may be misrecognized." }
+  }
+};
+
+function _fill(tpl, params) {
+  return (tpl || "").replace(/\{(\w+)\}/g, (m, k) =>
+    (params && params[k] !== undefined && params[k] !== null) ? params[k] : m);
+}
+
+function clearMsg() {
+  const p = $("msgPanel");
+  p.style.display = "none";
+  p.innerHTML = "";
+}
+
+function showError(code, params) {
+  const table = ERRHELP[lang] || ERRHELP.zh;
+  const info = table[code] || { title: code, detail: "", hint: "" };
+  const p = $("msgPanel");
+  p.className = "msg-panel msg-error";
+  p.style.display = "block";
+  p.innerHTML =
+    '<b class="title">❌ ' + _fill(info.title, params) + "</b>" +
+    _fill(info.detail, params).replace(/\n/g, "<br>") +
+    '<div class="hint"><b>' + (lang === "zh" ? "怎么改：" : "How to fix:") + "</b><br>" +
+    _fill(info.hint, params).replace(/\n/g, "<br>") + "</div>";
+  p.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function showWarnings(list) {
+  if (!list || !list.length) return;
+  const table = WARNHELP[lang] || WARNHELP.zh;
+  const html = list.map(w => {
+    const info = table[w.code];
+    if (!info) return "";
+    return '<b class="title">⚠️ ' + _fill(info.title, w.params) + "</b>" +
+      _fill(info.detail, w.params).replace(/\n/g, "<br>") +
+      '<div class="hint">' + _fill(info.hint, w.params).replace(/\n/g, "<br>") + "</div>";
+  }).join("<hr style='border:none;border-top:1px dashed currentColor;margin:10px 0'>");
+  const p = $("msgPanel");
+  p.className = "msg-panel msg-warn";
+  p.style.display = "block";
+  p.innerHTML = html;
+}
+
+function markBad(id, bad) {
+  const el = $(id);
+  if (el) el.className = bad ? "bad" : "";
+}
+
+// 用户一开始输入就取消红框
+["yolo_model", "refset", "images_folder", "output_folder", "exclset"].forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener("input", () => { markBad(id, false); });
+});
+
+// 识别
+$("btnRun").onclick = async () => {
+  clearMsg();
+  const yoloVal = $("yolo_model").value.trim();
+  const refVal = $("refset").value.trim();
+  // 先做本地检查, 不必等服务器
+  markBad("yolo_model", !yoloVal);
+  markBad("refset", !refVal);
+  if (!yoloVal) { showError("EMPTY_YOLO"); setStatus("", ""); return; }
+  if (!refVal) { showError("EMPTY_REFSET"); setStatus("", ""); return; }
+  setStatus(t("running"));
+  $("btnRun").disabled = true;
+  try {
+    const r = await fetch("/api/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "CharacterRecognizer" },
+      body: JSON.stringify({
+        yolo_model: yoloVal,
+        images_folder: $("images_folder").value.trim(),
+        refset: refVal,
+        output_folder: $("output_folder").value.trim(),
+        exclset: $("exclset").value.trim(),
+        lang: lang,
+      })
+    });
+    const d = await r.json();
+    if (d.error_code) {
+      showError(d.error_code, d.params || {});
+      setStatus(t("error_prefix") + (ERRHELP[lang] || ERRHELP.zh)[d.error_code]?.title || "", "error");
+      return;
+    }
+    state = { ...d, images_folder: $("images_folder").value.trim() };
+    renderResults();
+    let msg = t("done", { n: d.rows.length });
+    if (d.excl_count) msg += t("excl_active", { n: d.excl_count });
+    setStatus(msg, "ok");
+    showWarnings(d.warnings);
+  } catch (e) {
+    setStatus(t("request_failed") + e, "error");
+    showError("INTERNAL", { reason: String(e) });
+  } finally {
+    $("btnRun").disabled = false;
+  }
+};
+
+function imgPath(name) {
+  const stem = name.replace(/\.(png|jpe?g|bmp|webp)$/i, "");
+  return state.out_dir + "\\" + stem + "_annotated.png";
+}
+
+function renderResults() {
+  $("resultsCard").style.display = "block";
+  const legend = $("legend");
+  legend.innerHTML = state.classes.map((c, i) =>
+    '<span><span class="dot" style="background:' + colorOf(i) + '"></span>' + c + '</span>').join("") +
+    (state.has_excl ? '<span><span class="dot" style="background:#808080"></span>' + t("legend_excl") + '</span>' : "");
+  const byImg = {};
+  state.rows.forEach(r => { (byImg[r.image] = byImg[r.image] || []).push(r); });
+  const html = Object.keys(byImg).map(name => {
+    const boxes = byImg[name];
+    const boxRows = boxes.map(b => {
+      const classOpts = state.classes.map(c => '<option value="' + c + '"' + (c === b.class ? " selected" : "") + '>' + c + "</option>").join("");
+      const exclOpt = state.has_excl
+        ? '<option value="excluded"' + (b.class === "excluded" ? " selected" : "") + '>' + t("excl_option") + '</option>'
+        : "";
+      const isExcl = b.class === "excluded";
+      const confCls = isExcl ? "" : (b.conf < 0.55 ? " conf-low" : "");
+      const trStyle = isExcl ? ' style="opacity:.55;background:#f3f4f6"' : "";
+      return '<tr data-num="' + b.num + '"' + trStyle + '>' +
+        '<td>#' + b.num + '</td>' +
+        '<td>' + b.x1 + ',' + b.y1 + ' → ' + b.x2 + ',' + b.y2 + '</td>' +
+        '<td><select class="clsSel">' + classOpts + exclOpt + '</select></td>' +
+        '<td class="' + confCls + '">' + Math.round(b.conf * 100) + '%</td>' +
+        '<td><button class="btn-danger btnDel">' + t("btn_del") + '</button></td>' +
+        '</tr>';
+    }).join("");
+    return '<div class="img-card"><h3>' + name + '（' + boxes.length + t("box_count") + t("img_card_tail") + '</h3>' +
+      '<img src="/file?path=' + encodeURIComponent(imgPath(name)) + '">' +
+      '<table><tr><th>' + t("th_num") + '</th><th>' + t("th_pos") + '</th><th>' + t("th_class") + '</th><th>' + t("th_conf") + '</th><th></th></tr>' +
+      boxRows + '</table></div>';
+  }).join("");
+  $("results").innerHTML = html;
+  document.querySelectorAll(".btnDel").forEach(btn => btn.onclick = () => {
+    const tr = btn.closest("tr");
+    const num = +tr.dataset.num;
+    state.rows = state.rows.filter(r => r.num !== num);
+    tr.remove();
+    $("saveStatus").textContent = "";
+  });
+  document.querySelectorAll(".clsSel").forEach(sel => sel.onchange = () => {
+    const num = +sel.closest("tr").dataset.num;
+    const row = state.rows.find(r => r.num === num);
+    if (row) row.class = sel.value;
+    $("saveStatus").textContent = "";
+  });
+}
+
+function colorOf(i) {
+  const palette = ["#00a5ff", "#00ff00", "#0000ff", "#ff0000", "#00ffff", "#ff00ff", "#ffff00", "#0080ff", "#8000ff", "#00ff80", "#ff8000", "#008080"];
+  return palette[i % palette.length];
+}
+
+// 保存
+$("btnSave").onclick = async () => {
+  $("saveStatus").textContent = t("saving");
+  const r = await fetch("/api/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Requested-With": "CharacterRecognizer" },
+    body: JSON.stringify({
+      rows: state.rows,
+      images_folder: state.images_folder,
+      output_folder: state.out_dir,
+      classes: state.classes,
+      lang: lang,
+    })
+  });
+  const d = await r.json();
+  if (d.error_code) { showError(d.error_code, d.params || {}); $("saveStatus").textContent = ""; return; }
+  let msg = t("saved_ok", { dir: state.out_dir });
+  if (d.excluded_count) msg += t("saved_excl", { n: d.excluded_count });
+  $("saveStatus").textContent = msg;
+  document.querySelectorAll(".img-card img").forEach(img => {
+    const src = img.src.split("?")[0];
+    img.src = src + "?t=" + Date.now();
+  });
+};
+
+loadDefaults();
+
+// 心跳: 每秒告诉后台"页面还开着"
+setInterval(() => { try { fetch("/api/ping"); } catch (e) {} }, 1000);
+
+// 页面关闭时通知后台 (刷新页面会在 3 秒内重新心跳, 自动取消退出)
+window.addEventListener("pagehide", () => {
+  try {
+    fetch("/api/close", {
+      method: "POST",
+      headers: { "X-Requested-With": "CharacterRecognizer" },
+      keepalive: true,
+    });
+  } catch (e) {}
+});
+</script>
+</body>
+</html>
