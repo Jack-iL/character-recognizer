@@ -26,6 +26,15 @@ cd /d "%NEUTRAL%"
 python -m PyInstaller --clean --noconfirm recognizer.spec
 
 echo [3/3] Done
-echo Output: %NEUTRAL%\dist\CharacterRecognizer
-echo Before sharing, delete runtime files inside it: web_config.json / debug_log.txt / hf_cache
+set OUT=%NEUTRAL%\dist\CharacterRecognizer
+echo Output: %OUT%
+
+echo Cleaning runtime files (so the output is safe to share)...
+if exist "%OUT%\web_config.json" del /q "%OUT%\web_config.json"
+if exist "%OUT%\config.txt"      del /q "%OUT%\config.txt"
+if exist "%OUT%\debug_log.txt"   del /q "%OUT%\debug_log.txt"
+if exist "%OUT%\hf_cache"        rmdir /s /q "%OUT%\hf_cache"
+if exist "%OUT%\input_images"    rmdir /s /q "%OUT%\input_images"
+if exist "%OUT%\output_results"  rmdir /s /q "%OUT%\output_results"
+echo Share-ready: %OUT%
 pause
