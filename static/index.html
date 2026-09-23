@@ -768,7 +768,7 @@ $("btnSave").onclick = async () => {
 loadDefaults();
 
 // 心跳: 每秒告诉后台"页面还开着"
-setInterval(() => { try { fetch("/api/ping"); } catch (e) {} }, 1000);
+setInterval(() => { try { fetch("/api/ping", { headers: { "X-Requested-With": "CharacterRecognizer" } }); } catch (e) {} }, 1000);
 
 // 页面关闭时通知后台 (刷新页面会在 3 秒内重新心跳, 自动取消退出)
 window.addEventListener("pagehide", () => {

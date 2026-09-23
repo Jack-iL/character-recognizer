@@ -3,7 +3,7 @@
 识别程序 - 网页版后端
 启动后浏览器打开 http://127.0.0.1:8000 即可使用
 """
-import sys, os, glob, csv, json, time
+import sys, os, glob, csv, json, time, threading
 from collections import defaultdict
 
 _DEV_BASE = os.path.dirname(os.path.abspath(__file__))
@@ -58,6 +58,9 @@ MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
         ".bmp": "image/bmp", ".webp": "image/webp"}
 
 app = Flask(__name__, static_folder=os.path.join(RES, "static"))
+# 页面不缓存: 保证每次启动拿到的前端都与后端匹配
+# (前端心跳现在必须带自定义头, 若浏览器给旧缓存页面就可能导致心跳失效)
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 WEB_CFG = os.path.join(BASE, "web_config.json")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -73,13 +76,24 @@ ALLOWED_HOSTS = {"127.0.0.1", "localhost"}
 ALLOWED_FILE_DIRS = set()
 
 def _path_allowed(path):
+    if not path:
+        return False
+    raw = path.strip()
+    # 网络路径(UNC)与设备路径一律拒绝:
+    # 形如 \\攻击者主机\share\x.png 的路径会让 isfile() 主动发起 SMB 外连,
+    # 泄露本机 NTLM 哈希; 而且这类路径本来就不可能是用户自己选定的文件夹
+    if raw.startswith(("\\\\", "//")):
+        return False
     try:
-        p = os.path.abspath(path)
+        # realpath: 解析软链接/目录联接, 防止有人把链接放进白名单目录后越界读取
+        p = os.path.realpath(os.path.abspath(raw))
     except Exception:
+        return False
+    if p.startswith(("\\\\", "//")):
         return False
     for d in list(ALLOWED_FILE_DIRS):
         try:
-            if os.path.commonpath([p, os.path.abspath(d)]) == os.path.abspath(d):
+            if os.path.commonpath([p, os.path.realpath(os.path.abspath(d))]) == os.path.realpath(os.path.abspath(d)):
                 return True
         except ValueError:
             continue
@@ -100,6 +114,31 @@ def _csrf_ok():
 def _guard_write():
     if request.method in ("POST", "PUT", "DELETE") and not _csrf_ok():
         return Response("forbidden", status=403)
+
+# 4) 活跃度看门狗状态 (start_server 里初始化)
+#    任何请求都算"页面还活着"; 识别任务运行期间暂停 45 秒兜底退出,
+#    避免"几千张图片"这类长任务被后台标签页节流(心跳从 1 秒变成 1 分钟)误杀
+PING_LAST = time.time()
+CLOSE_AT = 0.0
+PING_STARTED = threading.Event()   # start_server 会重置; 这里给默认值避免空引用
+RUNNING = False
+
+@app.before_request
+def _touch_activity():
+    global PING_LAST, RUNNING
+    # 只有带自定义头的请求(= 本程序自己的页面)才算"页面还活着";
+    # 否则本机任何网页只要反复访问 "/" 就能无限续命, 让"关网页就退出"失效
+    if _csrf_ok():
+        PING_LAST = time.time()
+    if request.path == "/api/run":
+        RUNNING = True
+
+@app.teardown_request
+def _run_finished(exc=None):
+    global RUNNING, PING_LAST
+    if request.path == "/api/run":
+        RUNNING = False
+        PING_LAST = time.time()   # 任务结束后重新给页面一个完整的心跳窗口
 # ===================================================
 
 def load_webcfg():
@@ -239,10 +278,12 @@ def file_serve():
     ext = os.path.splitext(p)[1].lower()
     if ext not in IMG_EXTS:
         return "not allowed", 403
-    if not p or not os.path.isfile(p):
-        return "not found", 404
+    # 先做白名单判断(纯字符串运算, 不碰硬盘), 之后才 stat:
+    # 否则 \\攻击者主机\share\x.png 会让 isfile() 先发起 SMB 外连
     if not _path_allowed(p):
         return "forbidden", 403
+    if not os.path.isfile(p):
+        return "not found", 404
     return Response(open(p, "rb").read(), mimetype=MIME.get(ext, "application/octet-stream"))
 
 @app.route("/api/defaults")
@@ -295,6 +336,10 @@ def api_ready():
 
 @app.route("/api/ping")
 def api_ping():
+    # 心跳也要带自定义头: 否则本机上任何网页/程序都能不断"续命",
+    # 让"关掉网页就自动退出"失效
+    if not _csrf_ok():
+        return Response("forbidden", status=403)
     try:
         global PING_LAST, CLOSE_AT
         PING_LAST = time.time()
@@ -520,20 +565,22 @@ def api_save():
 
 def start_server():
     import threading, webbrowser, time as _time
-    global PING_LAST, PING_STARTED, CLOSE_AT
+    global PING_LAST, PING_STARTED, CLOSE_AT, RUNNING
     PING_LAST = _time.time()
     CLOSE_AT = 0.0
+    RUNNING = False
     PING_STARTED = threading.Event()
 
     def watchdog():
-        """页面关闭信号 -> 3 秒内退出; 心跳长时间中断(卡死) -> 45 秒兜底退出"""
+        """页面关闭信号 -> 3 秒内退出; 心跳长时间中断(卡死) -> 45 秒兜底退出
+           (识别任务运行中不触发兜底, 免得长任务被误杀)"""
         PING_STARTED.wait(timeout=600)
         while True:
             _time.sleep(0.5)
             if CLOSE_AT and _time.time() > CLOSE_AT:
                 print("页面已关闭, 程序自动退出", flush=True)
                 os._exit(0)
-            if _time.time() - PING_LAST > 45:
+            if not RUNNING and _time.time() - PING_LAST > 45:
                 print("页面长时间无响应, 程序自动退出", flush=True)
                 os._exit(0)
 

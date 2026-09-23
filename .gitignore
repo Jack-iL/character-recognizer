@@ -37,6 +37,27 @@ clip_model_fp16/
 *.csv
 *.xlsx
 
+# 数据集导出文件 (Roboflow / YOLO 等格式): 万一被拖进仓库也不会被提交
+# data.yaml / 说明文件 / 标签文件都会暴露数据集来源与授权, 属于不该公开的内容
+data.yaml
+*.txt
+!requirements.txt
+*.json
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+
+# 权重与可执行文件
+*.safetensors
+*.bin
+*.exe
+*.dll
+
+# 本地安装的第三方库目录 (体积巨大, 且可能含本机路径)
+pylibs*/
+
 # 密钥/凭据类文件 (防止误传; 本仓库不需要任何凭据)
 .env
 .env.*
