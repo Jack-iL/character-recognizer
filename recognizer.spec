@@ -39,6 +39,15 @@ a = Analysis(
     noarchive=False,
 )
 
+# 剔除第三方素材: ultralytics 自带的示例图片 (bus.jpg / zidane.jpg 等)
+# 这些是 ultralytics 仓库的演示用图 (含真实人物照片), 程序运行时完全用不到。
+def _keep(entry):
+    dest = str(entry[0]).replace("\\", "/").lower()
+    return not (dest.startswith("ultralytics/assets")
+                or "/assets/" in dest and dest.endswith((".jpg", ".jpeg", ".png")))
+
+a.datas = [d for d in a.datas if _keep(d)]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
